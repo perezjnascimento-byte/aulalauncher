@@ -84,8 +84,7 @@
         android:label="Aura"
         android:supportsRtl="true"
         android:theme="@style/Theme.AuraLauncher">
-
-        <activity
+<activity
             android:name=".MainActivity"
             android:exported="true"
             android:launchMode="singleTask"
@@ -99,6 +98,7 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+```[cite: 10]
 
         <service
             android:name=".AuraNotificationListener"
