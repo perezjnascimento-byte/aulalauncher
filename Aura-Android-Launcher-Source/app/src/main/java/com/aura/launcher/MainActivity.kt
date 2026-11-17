@@ -270,14 +270,15 @@ class MainActivity : AppCompatActivity() {
                 settings.cacheMode = WebSettings.LOAD_DEFAULT
                 addJavascriptInterface(AuraNativeBridgeImpl(), "AuraNativeBridge")
 
+                Kotlin
                 try {
-                    CookieManager.getInstance().apply {
-                        setAcceptCookie(true)
-                        setAcceptThirdPartyCookies(this@apply, true)
-                    }
+                    val cookieManager = CookieManager.getInstance()
+                    cookieManager.setAcceptCookie(true)
+                    cookieManager.setAcceptThirdPartyCookies(this, true)
                 } catch (_: Throwable) {
                     // ignore
                 }
+```[cite: 21]
 
                 webChromeClient = object : WebChromeClient() {
                     override fun onShowFileChooser(
