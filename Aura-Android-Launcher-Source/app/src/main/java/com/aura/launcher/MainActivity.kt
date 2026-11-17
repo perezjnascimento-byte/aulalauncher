@@ -402,7 +402,7 @@ class MainActivity : AppCompatActivity() {
 
             webView = wv
             setContentView(wv)
-            wv.loadUrl(auraEntryUrl)
+            wv.loadDataWithBaseURL(null, "<html><body style='background:#15120F;color:white;text-align:center;padding-top:50vh;'><h1>Aura Inicializada com Sucesso</h1></body></html>", "text/html", "UTF-8", null)
         } catch (t: Throwable) {
             val sw = StringWriter()
             t.printStackTrace(PrintWriter(sw))
