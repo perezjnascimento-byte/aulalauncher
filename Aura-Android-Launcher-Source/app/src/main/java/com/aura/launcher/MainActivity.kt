@@ -99,8 +99,8 @@ class MainActivity : AppCompatActivity() {
 
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
-        installCrashShield()
-        super.onCreate(null)
+    installCrashShield()
+    super.onCreate(savedInstanceState)
 
         try {
             enableEdgeToEdge(
