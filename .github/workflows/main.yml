@@ -1,1 +1,37 @@
+name: Build Aura Launcher APK
 
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+      - name: Prepare Android project
+        run: python3 "$(find . -maxdepth 4 -name 'prepare_flat.py' | head -n 1)"
+      - uses: android-actions/setup-android@v3
+      - name: Install Android SDK 35
+        run: |
+          set +o pipefail
+          yes | sdkmanager --licenses >/dev/null 2>&1 || true
+          set -o pipefail
+          sdkmanager "platforms;android-35" "build-tools;35.0.0" "platform-tools"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.7'
+      - name: Build Debug APK
+        run: |
+          PROJ_DIR="$(cat .aura_project_dir)"
+          gradle -p "$PROJ_DIR" assembleDebug --no-daemon
+          cp "$PROJ_DIR/app/build/outputs/apk/debug/app-debug.apk" Aura-Launcher-S26.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: AuraLauncher-S26-APK
+          path: Aura-Launcher-S26.apk
