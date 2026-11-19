@@ -1,0 +1,182 @@
+name: Build Local Aura Launcher APK
+
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Prepare Android project
+        run: |
+          PREP_SCRIPT="$(find . -maxdepth 4 -name 'prepare_flat.py' | head -n 1)"
+          if [ -z "$PREP_SCRIPT" ]; then
+            echo "Erro: prepare_flat.py não encontrado."
+            exit 1
+          fi
+          python3 "$PREP_SCRIPT"
+
+      - name: Bundle local web assets and switch MainActivity to offline asset mode
+        run: |
+          PROJ_DIR="$(cat .aura_project_dir)"
+          ASSETS_DIR="$PROJ_DIR/app/src/main/assets"
+          MAIN_KT="$PROJ_DIR/app/src/main/java/com/aura/launcher/MainActivity.kt"
+          MANIFEST_XML="$PROJ_DIR/app/src/main/AndroidManifest.xml"
+
+          mkdir -p "$ASSETS_DIR"
+
+          # Se você tiver uma pasta com os arquivos da interface web no repo (ex.: web_dist, public, dist ou aura_web),
+          # copia o conteúdo dela para app/src/main/assets/
+          COPIED_SOURCE=0
+          for candidate in "web_dist" "aura_web" "public" "dist" "www"; do
+            if [ -d "$candidate" ] && [ -f "$candidate/index.html" ]; then
+              cp -r "$candidate/." "$ASSETS_DIR/"
+              echo "Arquivos locais copiados de '$candidate' para '$ASSETS_DIR'."
+              COPIED_SOURCE=1
+              break
+            fi
+          done
+
+          # Caso não exista pasta dedicada mas exista um index.html solto fora de app/src/main/assets
+          if [ "$COPIED_SOURCE" -eq 0 ] && [ -f "index.html" ]; then
+            cp "index.html" "$ASSETS_DIR/index.html"
+            [ -f "styles.css" ] && cp "styles.css" "$ASSETS_DIR/styles.css"
+            [ -f "app.js" ] && cp "app.js" "$ASSETS_DIR/app.js"
+            echo "Arquivos web locais copiados da raiz para '$ASSETS_DIR'."
+            COPIED_SOURCE=1
+          fi
+
+          # Garante um index.html local mínimo caso o repositório só tenha código Kotlin/manifesto no momento
+          if [ ! -f "$ASSETS_DIR/index.html" ]; then
+            cat <<'EOF' > "$ASSETS_DIR/index.html"
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Aura</title>
+    <style>
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        background: #15120F;
+        color: #EFE8DF;
+        font-family: system-ui, -apple-system, sans-serif;
+        text-align: center;
+        padding: 24px;
+      }
+      .ring {
+        width: 56px;
+        height: 56px;
+        border-radius: 999px;
+        border: 2px solid #E9A06B;
+        margin-bottom: 18px;
+      }
+      p { color: rgba(239, 232, 223, 0.72); max-width: 320px; line-height: 1.5; }
+    </style>
+  </head>
+  <body>
+    <div class="ring"></div>
+    <h1>Aura Local</h1>
+    <p>Rodando 100% no aparelho via assets locais. Adicione seus arquivos HTML/JS/CSS na pasta local do projeto para renderizar a interface completa.</p>
+  </body>
+</html>
+EOF
+            echo "Criado index.html local padrão em '$ASSETS_DIR/index.html'."
+          fi
+
+          # Atualiza MainActivity.kt para habilitar acesso a arquivos locais e carregar file:///android_asset/index.html
+          if [ -f "$MAIN_KT" ]; then
+            python3 - <<PY
+from pathlib import Path
+
+kt_path = Path("$MAIN_KT")
+code = kt_path.read_text(encoding="utf-8")
+
+# Garante allowFileAccess = true junto a allowContentAccess = true
+if "settings.allowFileAccess = true" not in code:
+    code = code.replace(
+        "settings.allowContentAccess = true",
+        "settings.allowContentAccess = true\n                settings.allowFileAccess = true"
+    )
+
+# Troca a URL remota inicial pelo asset local
+old_url = 'private val auraEntryUrl = "https://ais-pre-jd7xmhrwywshavy6m2tnrs-576801925631.us-west2.run.app/"'
+new_url = 'private val auraEntryUrl = "file:///android_asset/index.html"'
+code = code.replace(old_url, new_url)
+
+# Permite que file:///android_asset seja tratado como origem oficial na ponte nativa
+old_origin_check = """    private fun isOfficialOrigin(uri: Uri?): Boolean {
+        if (uri == null) return false"""
+
+new_origin_check = """    private fun isOfficialOrigin(uri: Uri?): Boolean {
+        if (uri == null) return false
+        if (uri.scheme.equals("file", ignoreCase = true) && (uri.path?.startsWith("/android_asset/") == true)) {
+            return true
+        }"""
+
+if "startsWith(\"/android_asset/\")" not in code and old_origin_check in code:
+    code = code.replace(old_origin_check, new_origin_check, 1)
+
+# Garante que currentMainFrameUrl aceite file://
+code = code.replace(
+    'if (!url.isNullOrEmpty() && (url.startsWith("http://") || url.startsWith("https://")))',
+    'if (!url.isNullOrEmpty() && (url.startsWith("http://") || url.startsWith("https://") || url.startsWith("file://")))'
+)
+
+kt_path.write_text(code, encoding="utf-8")
+print("MainActivity.kt atualizado para modo 100% local via assets.")
+PY
+          fi
+
+          # Garante que o rótulo do app seja Aura
+          if [ -f "$MANIFEST_XML" ]; then
+            python3 - <<PY
+from pathlib import Path
+import re
+
+m_path = Path("$MANIFEST_XML")
+xml = m_path.read_text(encoding="utf-8")
+xml = re.sub(r'android:label="[^"]*"', 'android:label="Aura"', xml, count=1)
+m_path.write_text(xml, encoding="utf-8")
+PY
+          fi
+
+      - name: Install Android SDK 35
+        run: |
+          export ANDROID_HOME="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          echo "ANDROID_HOME=$ANDROID_HOME" >> "$GITHUB_ENV"
+          SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          [ -x "$SDKMANAGER" ] || SDKMANAGER="$(command -v sdkmanager)"
+          set +o pipefail
+          yes | "$SDKMANAGER" --licenses >/dev/null 2>&1 || true
+          set -o pipefail
+          "$SDKMANAGER" "platforms;android-35" "build-tools;35.0.0" "platform-tools"
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.7'
+
+      - name: Build Debug APK
+        run: |
+          PROJ_DIR="$(cat .aura_project_dir)"
+          gradle -p "$PROJ_DIR" assembleDebug --no-daemon
+          cp "$PROJ_DIR/app/build/outputs/apk/debug/app-debug.apk" Aura-Launcher-S26.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: AuraLauncher-S26-APK
+          path: Aura-Launcher-S26.apk
