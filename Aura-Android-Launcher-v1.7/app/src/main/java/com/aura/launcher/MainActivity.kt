@@ -2034,7 +2034,7 @@ class MainActivity : AppCompatActivity() {
         if (candidate.isEmpty() || candidate.length > 253 || !candidate.contains(".")) return null
         if (!candidate.matches(Regex("^[a-z0-9.-]+$"))) return null
         if (candidate.startsWith(".") || candidate.endsWith(".") || candidate.contains("..")) return null
-        if (candidate == "localhost" || candidate.endsWith(".local") || candidate.matches(Regex("^\d+\.\d+\.\d+\.\d+$"))) {
+        if (candidate == "localhost" || candidate.endsWith(".local") || candidate.matches(Regex("^\\d+\\.\\d+\\.\\d+\\.\\d+$"))) {
             return null
         }
         return candidate
@@ -2168,6 +2168,10 @@ class MainActivity : AppCompatActivity() {
                             .put("body", bodyText)
                             .toString()
                     }
+                } catch (_: Throwable) {
+                    .toString()
+                    }
+                    JSONObject().put("status", 0).put("body", "").toString()
                 } catch (_: Throwable) {
                     return@Callable JSONObject().put("status", 0).put("body", "").toString()
                 } finally {
